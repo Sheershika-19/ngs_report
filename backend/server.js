@@ -39,14 +39,15 @@ function runFastqc({ fastqcDir, inputPath, outDir }) {
   const cwd = path.resolve(fastqcDir)
   const classpath = buildClasspath(fastqcDir)
   const mem = process.env.FASTQC_JAVA_MEM || '250m'
+  // Input file(s) must come before -o / --outdir; otherwise FastQC treats the output path as a sequence file.
   const args = [
     `-Xmx${mem}`,
     '-classpath',
     classpath,
     'uk.ac.babraham.FastQC.FastQCApplication',
+    inputPath,
     '-o',
     outDir,
-    inputPath,
   ]
 
   return new Promise((resolve, reject) => {

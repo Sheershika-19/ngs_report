@@ -55,7 +55,9 @@ export function QualityControlPanel() {
       <p className="qc-lead">
         Run FastQC on a file that already exists on this computer. Large <code>.fastq</code> /{' '}
         <code>.fq.gz</code> files are not uploaded through the browser; the API runs FastQC locally
-        using the path you provide.
+        using the path you provide. When the run succeeds, your browser saves{' '}
+        <strong>fastqc-results.zip</strong> to your normal download folder (e.g.{' '}
+        <code>Downloads</code> on Windows—same place as any other downloaded file).
       </p>
 
       <div className="qc-field">
