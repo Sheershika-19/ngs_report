@@ -155,6 +155,28 @@ function assertSafeBwaCmd(cmd) {
   return v
 }
 
+/** HaplotypeCaller via `java -jar gatk-package-*-local.jar` (same Java as PICARD_JAVA / .env). */
+function gatkHaplotypeCallerCommand(refPath, inputBam, outputVcf, reqBody) {
+  const w = bashWslWord
+  const jar =
+    reqBody?.gatkJar?.trim() ||
+    process.env.GATK_JAR?.trim() ||
+    '~/gatk-4.5.0.0/gatk-package-4.5.0.0-local.jar'
+  assertSafePath('gatkJar', jar)
+  let jopts = ''
+  if (process.env.GATK_JAVA_OPTS !== undefined) {
+    jopts = process.env.GATK_JAVA_OPTS.trim()
+  }
+  if (jopts && /[\r\n;`$&|<>]/.test(jopts)) {
+    const err = new Error('GATK_JAVA_OPTS contains invalid characters')
+    err.status = 400
+    throw err
+  }
+  const javaBin = picardJavaExecutable()
+  const optsPart = jopts ? `${jopts} ` : ''
+  return `${javaBin} ${optsPart}-jar ${w(jar)} HaplotypeCaller -R ${w(refPath)} -I ${w(inputBam)} -O ${w(outputVcf)}`
+}
+
 /** Picard launcher token — same rules as a bare command name (like `samtools` in this file). */
 function assertSafePicardCmd(cmd) {
   const v = String(cmd ?? '').trim() || 'picard'
@@ -377,6 +399,28 @@ app.post('/api/post-alignment/mark-duplicates', async (req, res) => {
     }
     return res.status(500).json({
       error: 'Picard MarkDuplicates failed',
+      detail: e instanceof Error ? e.message : String(e),
+    })
+  }
+})
+
+app.post('/api/variant-calling/haplotype-caller', async (req, res) => {
+  try {
+    const refPath = assertSafePath('refPath', req.body?.refPath)
+    const inputBam = assertSafePath('inputBam', req.body?.inputBam)
+    const outputVcf = assertSafePath('outputVcf', req.body?.outputVcf)
+
+    const pipeline = gatkHaplotypeCallerCommand(refPath, inputBam, outputVcf, req.body)
+    const script = wrapWithPrologue(pipeline)
+
+    const { stdout, stderr } = await runBashScript(script)
+    res.json({ ok: true, stdout, stderr, exitCode: 0 })
+  } catch (e) {
+    if (e && typeof e.status === 'number') {
+      return res.status(e.status).json({ error: e.message })
+    }
+    return res.status(500).json({
+      error: 'GATK HaplotypeCaller failed',
       detail: e instanceof Error ? e.message : String(e),
     })
   }

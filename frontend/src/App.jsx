@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlignmentPanel } from './components/AlignmentPanel.jsx'
 import { PostAlignmentPanel } from './components/PostAlignmentPanel.jsx'
 import { QualityControlPanel } from './components/QualityControlPanel.jsx'
+import { VariantCallingPanel } from './components/VariantCallingPanel.jsx'
 import { MENU_SECTIONS } from './menuSections.js'
 import './App.css'
 
@@ -48,6 +49,8 @@ function App() {
             <AlignmentPanel />
           ) : active.id === 'post-alignment' ? (
             <PostAlignmentPanel />
+          ) : active.id === 'variant-calling' ? (
+            <VariantCallingPanel />
           ) : (
             <p className="main-placeholder">
               Content and actions for this step will go here. Switch sections using the menu on the
