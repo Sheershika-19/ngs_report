@@ -118,6 +118,92 @@ function bashWslWord(s) {
   return bashSingleQuote(v)
 }
 
+/** Windows absolute path → Git Bash MSYS form (e.g. C:\\Users\\x → /c/Users/x). Unchanged on Unix. */
+function toGitBashPath(absPath) {
+  const resolved = path.resolve(absPath)
+  if (process.platform !== 'win32') {
+    return resolved.replace(/\\/g, '/')
+  }
+  const m = /^([a-zA-Z]):[\\/](.*)$/.exec(resolved)
+  if (!m) {
+    return resolved.replace(/\\/g, '/')
+  }
+  const rest = m[2].replace(/\\/g, '/')
+  return `/${m[1].toLowerCase()}/${rest}`
+}
+
+function parseTrimInt(val, defaultVal, label) {
+  if (val === undefined || val === null || val === '') return defaultVal
+  const x = Number(val)
+  if (!Number.isInteger(x) || x < 1 || x > 999) {
+    const err = new Error(`${label} must be an integer from 1 to 999`)
+    err.status = 400
+    throw err
+  }
+  return x
+}
+
+/** BBDuk ref= token: built-in name like adapters or a quoted MSYS path. */
+function bbdukRefShellToken(refRaw) {
+  const d = (refRaw ?? 'adapters').trim() || 'adapters'
+  if (/^[a-zA-Z][a-zA-Z0-9_.-]*$/.test(d)) return d
+  const p = assertSafePath('ref', refRaw)
+  return bashSingleQuote(toGitBashPath(path.resolve(p)))
+}
+
+function trimScriptBody(shellBody) {
+  return `set -euo pipefail
+${shellBody}`
+}
+
+function gitBashExecutable() {
+  const fromEnv = process.env.GIT_BASH?.trim()
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv
+  const dirs = [
+    process.env.ProgramFiles && path.join(process.env.ProgramFiles, 'Git', 'bin', 'bash.exe'),
+    process.env['ProgramFiles(x86)'] && path.join(process.env['ProgramFiles(x86)'], 'Git', 'bin', 'bash.exe'),
+  ].filter(Boolean)
+  for (const c of dirs) {
+    if (fs.existsSync(c)) return c
+  }
+  return null
+}
+
+/**
+ * Run a bash script in Git Bash on Windows (for BBMap shell wrappers). On macOS/Linux uses bash on PATH.
+ */
+function runGitBashScript(script) {
+  const bash = process.platform === 'win32' ? gitBashExecutable() : 'bash'
+  if (!bash) {
+    const err = new Error(
+      'Git Bash not found. Install Git for Windows or set GIT_BASH to the full path of bash.exe (e.g. C:\\Program Files\\Git\\bin\\bash.exe).',
+    )
+    err.status = 500
+    return Promise.reject(err)
+  }
+  return new Promise((resolve, reject) => {
+    const proc = spawn(bash, ['-lc', script], { windowsHide: true })
+    let stderr = ''
+    let stdout = ''
+    proc.stdout?.on('data', (d) => {
+      stdout += d.toString()
+    })
+    proc.stderr?.on('data', (d) => {
+      stderr += d.toString()
+    })
+    proc.on('error', reject)
+    proc.on('close', (code) => {
+      if (code === 0) resolve({ stdout, stderr, exitCode: 0 })
+      else {
+        const msg = [stderr, stdout].filter(Boolean).join('\n') || `exit ${code}`
+        const err = new Error(msg)
+        err.exitCode = code
+        reject(err)
+      }
+    })
+  })
+}
+
 /** Reject paths that could break out of quoting or inject commands. */
 function assertSafePath(label, p) {
   const v = String(p ?? '').trim()
@@ -529,6 +615,78 @@ app.post('/api/variant-annotation/run', async (req, res) => {
   }
 })
 
+/**
+ * Adapter / quality trimming with BBMap bbduk.sh via Git Bash (Windows) or bash (Unix).
+ * Configure BBMAP_DIR to the folder containing bbduk.sh (e.g. .../BBMap_39.01/bbmap).
+ */
+app.post('/api/trimming/bbduk', async (req, res) => {
+  try {
+    const bbmapDir = process.env.BBMAP_DIR?.trim()
+    if (!bbmapDir) {
+      return res.status(500).json({
+        error:
+          'Set environment variable BBMAP_DIR to your BBMap installation directory (the folder that contains bbduk.sh).',
+      })
+    }
+    const resolvedBbmap = path.resolve(bbmapDir)
+    const bbdukSh = path.join(resolvedBbmap, 'bbduk.sh')
+    try {
+      await fsPromises.access(bbdukSh, fs.constants.R_OK)
+    } catch {
+      return res.status(500).json({ error: `bbduk.sh not found in BBMAP_DIR: ${bbmapDir}` })
+    }
+
+    const inputPath = assertSafePath('inputPath', req.body?.inputPath)
+    const outputPath = assertSafePath('outputPath', req.body?.outputPath)
+    const resolvedIn = path.resolve(inputPath)
+    const resolvedOut = path.resolve(outputPath)
+    try {
+      await fsPromises.access(resolvedIn, fs.constants.R_OK)
+    } catch {
+      return res.status(400).json({ error: `Input FASTQ not found or not readable: ${inputPath}` })
+    }
+    const outParent = path.dirname(resolvedOut)
+    try {
+      await fsPromises.access(outParent, fs.constants.W_OK)
+    } catch {
+      return res.status(400).json({
+        error: `Output directory is not writable (create it first): ${outParent}`,
+      })
+    }
+
+    const sq = bashSingleQuote
+    const msysIn = toGitBashPath(resolvedIn)
+    const msysOut = toGitBashPath(resolvedOut)
+    const refTok = bbdukRefShellToken(req.body?.ref)
+    const k = parseTrimInt(req.body?.k, 23, 'k')
+    const mink = parseTrimInt(req.body?.mink, 11, 'mink')
+    const hdist = parseTrimInt(req.body?.hdist, 1, 'hdist')
+    const trimq = parseTrimInt(req.body?.trimq, 20, 'trimq')
+    const minlen = parseTrimInt(req.body?.minlen, 30, 'minlen')
+
+    const line = `./bbduk.sh in=${sq(msysIn)} out=${sq(msysOut)} ref=${refTok} ktrim=r k=${k} mink=${mink} hdist=${hdist} qtrim=r trimq=${trimq} minlen=${minlen}`
+    const script = trimScriptBody(`cd ${sq(toGitBashPath(resolvedBbmap))} && ${line}`)
+
+    const { stdout, stderr } = await runGitBashScript(script)
+    res.json({
+      ok: true,
+      stdout,
+      stderr,
+      exitCode: 0,
+      outputPath: resolvedOut,
+      command: line,
+    })
+  } catch (e) {
+    if (e && typeof e.status === 'number') {
+      return res.status(e.status).json({ error: e.message })
+    }
+    return res.status(500).json({
+      error: 'BBDuk failed',
+      detail: e instanceof Error ? e.message : String(e),
+    })
+  }
+})
+
 app.post('/api/qc/run', async (req, res) => {
   const fastqcDir = process.env.FASTQC_DIR?.trim()
   if (!fastqcDir) {
@@ -607,6 +765,9 @@ app.listen(PORT, () => {
   console.log(`NGS API listening on http://localhost:${PORT}`)
   if (!process.env.FASTQC_DIR) {
     console.warn('Warning: FASTQC_DIR is not set. Quality control runs will fail until you set it.')
+  }
+  if (!process.env.BBMAP_DIR) {
+    console.warn('Warning: BBMAP_DIR is not set. Read trimming (BBDuk) will fail until you set it.')
   }
   if (useWslForAlignment()) {
     console.log(

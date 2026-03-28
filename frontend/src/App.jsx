@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlignmentPanel } from './components/AlignmentPanel.jsx'
 import { PostAlignmentPanel } from './components/PostAlignmentPanel.jsx'
 import { QualityControlPanel } from './components/QualityControlPanel.jsx'
+import { ReadTrimmingPanel } from './components/ReadTrimmingPanel.jsx'
 import { VariantAnnotationPanel } from './components/VariantAnnotationPanel.jsx'
 import { VariantCallingPanel } from './components/VariantCallingPanel.jsx'
 import { MENU_SECTIONS } from './menuSections.js'
@@ -46,6 +47,8 @@ function App() {
         <div className="main-body">
           {active.id === 'quality-control' ? (
             <QualityControlPanel />
+          ) : active.id === 'read-trimming' ? (
+            <ReadTrimmingPanel />
           ) : active.id === 'alignment' ? (
             <AlignmentPanel />
           ) : active.id === 'post-alignment' ? (

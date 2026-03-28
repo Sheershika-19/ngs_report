@@ -9,6 +9,9 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8787',
         changeOrigin: true,
+        // BBDuk and other steps can run a long time; avoid idle proxy/socket drops.
+        timeout: 0,
+        proxyTimeout: 0,
       },
     },
   },
@@ -17,6 +20,9 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8787',
         changeOrigin: true,
+        // BBDuk and other steps can run a long time; avoid idle proxy/socket drops.
+        timeout: 0,
+        proxyTimeout: 0,
       },
     },
   },
