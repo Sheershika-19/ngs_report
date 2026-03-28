@@ -155,6 +155,93 @@ function assertSafeBwaCmd(cmd) {
   return v
 }
 
+/** Picard launcher token — same rules as a bare command name (like `samtools` in this file). */
+function assertSafePicardCmd(cmd) {
+  const v = String(cmd ?? '').trim() || 'picard'
+  if (/\s/.test(v)) {
+    const err = new Error('picardCmd must be a single path or command name without spaces')
+    err.status = 400
+    throw err
+  }
+  if (/[;`$]/.test(v) || /&&|\|\||\(|\)/.test(v)) {
+    const err = new Error('picardCmd contains invalid characters')
+    err.status = 400
+    throw err
+  }
+  return v
+}
+
+/**
+ * Linux Picard launcher path. Default is /usr/bin/picard (not bare `picard`): on WSL, PATH often
+ * finds Windows `picard.exe` (MusicBrainz music tagger) first — wrong binary, wrong GUI.
+ * Override with PICARD_CMD or use PICARD_JAR + java -jar (see picardMarkDuplicatesCommand).
+ */
+function picardExecutable() {
+  const raw = process.env.PICARD_CMD?.trim()
+  if (raw) {
+    try {
+      return assertSafePicardCmd(raw)
+    } catch {
+      return '/usr/bin/picard'
+    }
+  }
+  return '/usr/bin/picard'
+}
+
+/** Full path to java for Picard jar mode (same token rules as PICARD_CMD). */
+function assertSafeJavaBin(cmd) {
+  const v = String(cmd ?? '').trim() || 'java'
+  if (/\s/.test(v)) {
+    const err = new Error('PICARD_JAVA must be a single path without spaces')
+    err.status = 400
+    throw err
+  }
+  if (/[;`$]/.test(v) || /&&|\|\||\(|\)/.test(v)) {
+    const err = new Error('PICARD_JAVA contains invalid characters')
+    err.status = 400
+    throw err
+  }
+  return v
+}
+
+function picardJavaExecutable() {
+  const raw = process.env.PICARD_JAVA?.trim()
+  if (!raw) return 'java'
+  try {
+    return assertSafeJavaBin(raw)
+  } catch {
+    return 'java'
+  }
+}
+
+/**
+ * When PICARD_JAR is set: `${PICARD_JAVA} [PICARD_JAVA_OPTS] -jar jar MarkDuplicates …`
+ * Matches e.g. `/usr/lib/jvm/java-17-openjdk-amd64/bin/java -jar ~/picard.jar MarkDuplicates I=…`
+ */
+function picardMarkDuplicatesCommand(inputBam, outputBam, metricsPath) {
+  const w = bashWslWord
+  const jar = process.env.PICARD_JAR?.trim()
+  if (jar) {
+    assertSafePath('PICARD_JAR', jar)
+    let jopts = ''
+    if (process.env.PICARD_JAVA_OPTS === undefined) {
+      jopts = ''
+    } else {
+      jopts = process.env.PICARD_JAVA_OPTS.trim()
+    }
+    if (jopts && /[\r\n;`$&|<>]/.test(jopts)) {
+      const err = new Error('PICARD_JAVA_OPTS contains invalid characters')
+      err.status = 400
+      throw err
+    }
+    const javaBin = picardJavaExecutable()
+    const optsPart = jopts ? `${jopts} ` : ''
+    return `${javaBin} ${optsPart}-jar ${w(jar)} MarkDuplicates I=${w(inputBam)} O=${w(outputBam)} M=${w(metricsPath)}`
+  }
+  const picardBin = picardExecutable()
+  return `${picardBin} MarkDuplicates I=${w(inputBam)} O=${w(outputBam)} M=${w(metricsPath)}`
+}
+
 function useWslForAlignment() {
   if (process.env.ALIGN_USE_WSL === '0' || process.env.ALIGN_USE_WSL === 'false') {
     return false
@@ -273,6 +360,28 @@ app.post('/api/alignment/index-bam', async (req, res) => {
   }
 })
 
+app.post('/api/post-alignment/mark-duplicates', async (req, res) => {
+  try {
+    const inputBam = assertSafePath('inputBam', req.body?.inputBam)
+    const outputBam = assertSafePath('outputBam', req.body?.outputBam)
+    const metricsPath = assertSafePath('metricsPath', req.body?.metricsPath)
+
+    const pipeline = picardMarkDuplicatesCommand(inputBam, outputBam, metricsPath)
+    const script = wrapWithPrologue(pipeline)
+
+    const { stdout, stderr } = await runBashScript(script)
+    res.json({ ok: true, stdout, stderr, exitCode: 0 })
+  } catch (e) {
+    if (e && typeof e.status === 'number') {
+      return res.status(e.status).json({ error: e.message })
+    }
+    return res.status(500).json({
+      error: 'Picard MarkDuplicates failed',
+      detail: e instanceof Error ? e.message : String(e),
+    })
+  }
+})
+
 app.post('/api/qc/run', async (req, res) => {
   const fastqcDir = process.env.FASTQC_DIR?.trim()
   if (!fastqcDir) {
@@ -354,7 +463,7 @@ app.listen(PORT, () => {
   }
   if (useWslForAlignment()) {
     console.log(
-      'Alignment/index: WSL uses bash -ilc so Conda and ~/.bashrc PATH apply. Set ALIGN_WSL_PROLOGUE in .env if bwa is still not found.',
+      'Alignment / post-alignment: WSL uses bash -ilc so ~/.bashrc PATH applies. Set ALIGN_WSL_PROLOGUE in .env if tools are missing.',
     )
   }
 })
