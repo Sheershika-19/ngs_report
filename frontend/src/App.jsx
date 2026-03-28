@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AlignmentPanel } from './components/AlignmentPanel.jsx'
 import { QualityControlPanel } from './components/QualityControlPanel.jsx'
 import { MENU_SECTIONS } from './menuSections.js'
 import './App.css'
@@ -42,6 +43,8 @@ function App() {
         <div className="main-body">
           {active.id === 'quality-control' ? (
             <QualityControlPanel />
+          ) : active.id === 'alignment' ? (
+            <AlignmentPanel />
           ) : (
             <p className="main-placeholder">
               Content and actions for this step will go here. Switch sections using the menu on the

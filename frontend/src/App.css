@@ -248,6 +248,88 @@
   word-break: break-word;
 }
 
+/* Alignment (Step 3) */
+.align-panel {
+  max-width: 44rem;
+}
+
+.align-section {
+  margin-top: 1.25rem;
+}
+
+.align-section:first-of-type {
+  margin-top: 0;
+}
+
+.align-list-unstyled {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+
+.align-note {
+  margin-top: 0.75rem;
+}
+
+.align-cmd-inline {
+  display: inline;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  background: var(--code-bg);
+  font-size: 0.8125rem;
+}
+
+.align-pre {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: var(--code-bg);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.align-textarea {
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 6.5rem;
+}
+
+.align-actions-row {
+  margin-top: 0.75rem;
+}
+
+.align-copy {
+  margin-top: 0;
+}
+
+.align-copied {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.align-log-wrap {
+  margin-top: 1rem;
+}
+
+.align-log-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+  color: var(--text-h);
+}
+
+.align-log {
+  margin: 0;
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media (max-width: 720px) {
   .app-shell {
     flex-direction: column;

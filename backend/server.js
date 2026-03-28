@@ -89,8 +89,188 @@ function zipDirectoryToResponse(dirPath, res) {
   })
 }
 
+/** Escape a string for safe use inside a single-quoted bash literal. */
+function bashSingleQuote(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'"
+}
+
+/**
+ * Bash word for paths or a single command token. Tilde must not be single-quoted — it will not
+ * expand (e.g. '~/bwa/bwa' is wrong; use "$HOME/bwa/bwa").
+ */
+function bashWslWord(s) {
+  const v = String(s).trim()
+  if (v === '~') {
+    return '"$HOME"'
+  }
+  if (v.startsWith('~/')) {
+    const rest = v.slice(2)
+    if (/[\r\n\0]/.test(rest)) {
+      throw new Error('Path contains invalid characters')
+    }
+    const escaped = rest
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/\$/g, '\\$')
+      .replace(/`/g, '\\`')
+    return `"$HOME/${escaped}"`
+  }
+  return bashSingleQuote(v)
+}
+
+/** Reject paths that could break out of quoting or inject commands. */
+function assertSafePath(label, p) {
+  const v = String(p ?? '').trim()
+  if (!v) {
+    const err = new Error(`${label} is required`)
+    err.status = 400
+    throw err
+  }
+  if (/[\r\n\0]/.test(v)) {
+    const err = new Error(`${label} contains invalid characters`)
+    err.status = 400
+    throw err
+  }
+  if (/[;`$]/.test(v) || /&&|\|\||\(|\)/.test(v)) {
+    const err = new Error(`${label} must not contain shell metacharacters (; $ & | \` ( ) && ||)`)
+    err.status = 400
+    throw err
+  }
+  return v
+}
+
+/** BWA executable token only (e.g. bwa, ./bwa, /opt/bwa/bwa). */
+function assertSafeBwaCmd(cmd) {
+  const v = String(cmd ?? '').trim() || 'bwa'
+  if (/\s/.test(v)) {
+    const err = new Error('bwaCmd must be a single path or command name without spaces')
+    err.status = 400
+    throw err
+  }
+  if (/[;`$]/.test(v) || /&&|\|\||\(|\)/.test(v)) {
+    const err = new Error('bwaCmd contains invalid characters')
+    err.status = 400
+    throw err
+  }
+  return v
+}
+
+function useWslForAlignment() {
+  if (process.env.ALIGN_USE_WSL === '0' || process.env.ALIGN_USE_WSL === 'false') {
+    return false
+  }
+  return process.platform === 'win32'
+}
+
+/**
+ * Optional lines run before `set -euo pipefail` (e.g. Conda init if interactive .bashrc is not enough).
+ * Set ALIGN_WSL_PROLOGUE in backend/.env — runs inside the same bash as BWA/samtools.
+ */
+function alignmentPrologue() {
+  const p = process.env.ALIGN_WSL_PROLOGUE?.trim()
+  return p || ''
+}
+
+function wrapWithPrologue(shellBody) {
+  const pro = alignmentPrologue()
+  if (pro) {
+    return `${pro}
+set -euo pipefail
+${shellBody}`
+  }
+  return `set -euo pipefail
+${shellBody}`
+}
+
+/**
+ * Bash must be interactive + login so Ubuntu/WSL .bashrc runs past the non-interactive guard;
+ * otherwise conda init never runs and `bwa` / `samtools` are missing from PATH.
+ * See: https://github.com/conda/conda/issues/8169
+ */
+function bashInvocationArgs(script) {
+  // -i = interactive (sources full .bashrc including conda), -l = login shell
+  return ['bash', '-ilc', script]
+}
+
+/**
+ * Run a bash script. On Windows, runs inside WSL so bwa/samtools match your WSL install.
+ */
+function runBashScript(script) {
+  const wsl = useWslForAlignment()
+  const argv = bashInvocationArgs(script)
+
+  return new Promise((resolve, reject) => {
+    const proc = wsl
+      ? spawn('wsl.exe', argv, { windowsHide: true })
+      : spawn(argv[0], argv.slice(1), { windowsHide: true })
+    let stderr = ''
+    let stdout = ''
+    proc.stdout?.on('data', (d) => {
+      stdout += d.toString()
+    })
+    proc.stderr?.on('data', (d) => {
+      stderr += d.toString()
+    })
+    proc.on('error', reject)
+    proc.on('close', (code) => {
+      if (code === 0) resolve({ stdout, stderr, exitCode: 0 })
+      else {
+        const msg = [stderr, stdout].filter(Boolean).join('\n') || `exit ${code}`
+        const err = new Error(msg)
+        err.exitCode = code
+        reject(err)
+      }
+    })
+  })
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true })
+})
+
+app.post('/api/alignment/run', async (req, res) => {
+  try {
+    const bwaCmd = assertSafeBwaCmd(req.body?.bwaCmd)
+    const refPath = assertSafePath('refPath', req.body?.refPath)
+    const fastqPath = assertSafePath('fastqPath', req.body?.fastqPath)
+    const outBamPath = assertSafePath('outBamPath', req.body?.outBamPath)
+
+    const w = bashWslWord
+    const pipeline = `${w(bwaCmd)} mem ${w(refPath)} ${w(fastqPath)} | samtools view -Sb - | samtools sort -o ${w(outBamPath)}`
+    const script = wrapWithPrologue(pipeline)
+
+    const { stdout, stderr } = await runBashScript(script)
+    res.json({ ok: true, stdout, stderr, exitCode: 0 })
+  } catch (e) {
+    if (e && typeof e.status === 'number') {
+      return res.status(e.status).json({ error: e.message })
+    }
+    return res.status(500).json({
+      error: 'Alignment command failed',
+      detail: e instanceof Error ? e.message : String(e),
+    })
+  }
+})
+
+app.post('/api/alignment/index-bam', async (req, res) => {
+  try {
+    const bamPath = assertSafePath('bamPath', req.body?.bamPath)
+
+    const w = bashWslWord
+    const pipeline = `samtools index ${w(bamPath)}`
+    const script = wrapWithPrologue(pipeline)
+
+    const { stdout, stderr } = await runBashScript(script)
+    res.json({ ok: true, stdout, stderr, exitCode: 0 })
+  } catch (e) {
+    if (e && typeof e.status === 'number') {
+      return res.status(e.status).json({ error: e.message })
+    }
+    return res.status(500).json({
+      error: 'samtools index failed',
+      detail: e instanceof Error ? e.message : String(e),
+    })
+  }
 })
 
 app.post('/api/qc/run', async (req, res) => {
@@ -171,5 +351,10 @@ app.listen(PORT, () => {
   console.log(`NGS API listening on http://localhost:${PORT}`)
   if (!process.env.FASTQC_DIR) {
     console.warn('Warning: FASTQC_DIR is not set. Quality control runs will fail until you set it.')
+  }
+  if (useWslForAlignment()) {
+    console.log(
+      'Alignment/index: WSL uses bash -ilc so Conda and ~/.bashrc PATH apply. Set ALIGN_WSL_PROLOGUE in .env if bwa is still not found.',
+    )
   }
 })
