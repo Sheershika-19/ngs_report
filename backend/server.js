@@ -177,6 +177,87 @@ function gatkHaplotypeCallerCommand(refPath, inputBam, outputVcf, reqBody) {
   return `${javaBin} ${optsPart}-jar ${w(jar)} HaplotypeCaller -R ${w(refPath)} -I ${w(inputBam)} -O ${w(outputVcf)}`
 }
 
+function assertSafeVepCmd(cmd) {
+  const v = String(cmd ?? '').trim() || 'vep'
+  if (/\s/.test(v)) {
+    const err = new Error('vepCmd must be a single path or command name without spaces')
+    err.status = 400
+    throw err
+  }
+  if (/[;`$]/.test(v) || /&&|\|\||\(|\)/.test(v)) {
+    const err = new Error('vepCmd contains invalid characters')
+    err.status = 400
+    throw err
+  }
+  return v
+}
+
+function vepForkCount(fork) {
+  if (fork === undefined || fork === null || fork === '') return 4
+  const x = Number(fork)
+  if (!Number.isInteger(x) || x < 1 || x > 16) {
+    const err = new Error('fork must be an integer from 1 to 16')
+    err.status = 400
+    throw err
+  }
+  return x
+}
+
+function vepExecutableFromRequest(reqBody) {
+  const fromBody = reqBody?.vepCmd?.trim()
+  if (fromBody) return assertSafeVepCmd(fromBody)
+  const fromEnv = process.env.VEP_CMD?.trim()
+  if (fromEnv) return assertSafeVepCmd(fromEnv)
+  return 'vep'
+}
+
+/** Conda env name for `conda run -n … vep` (safe subset: letters, digits, _, -, .). */
+function assertSafeCondaEnvName(name) {
+  const v = String(name ?? '').trim()
+  if (!/^[a-zA-Z0-9][-._a-zA-Z0-9]*$/.test(v)) {
+    const err = new Error('Invalid conda env name (use something like vep_env)')
+    err.status = 400
+    throw err
+  }
+  return v
+}
+
+function vepCondaEnvFromRequest(reqBody) {
+  const fromBody = reqBody?.vepCondaEnv?.trim()
+  if (fromBody) return assertSafeCondaEnvName(fromBody)
+  const fromEnv = process.env.VEP_CONDA_ENV?.trim()
+  if (fromEnv) return assertSafeCondaEnvName(fromEnv)
+  return null
+}
+
+function condaExecutableToken() {
+  const raw = process.env.CONDA_EXE?.trim()
+  if (!raw) return 'conda'
+  try {
+    return assertSafeVepCmd(raw)
+  } catch {
+    return 'conda'
+  }
+}
+
+/**
+ * Ensembl VEP: --cache --offline. Optionally wrap with `conda run -n env --no-capture-output` so
+ * Perl sees the env’s modules (fixes missing DBI when activation from bash -ilc is incomplete).
+ */
+function vepAnnotationCommand(inputVcf, outputVcf, fastaPath, fork, reqBody) {
+  const w = bashWslWord
+  const vep = vepExecutableFromRequest(reqBody)
+  const f = vepForkCount(fork)
+  const inner = `${w(vep)} --cache --offline --fork ${f} -i ${w(inputVcf)} -o ${w(outputVcf)} --vcf --symbol --terms SO --hgvs --protein --canonical --fasta ${w(fastaPath)} --force_overwrite`
+
+  const condaEnv = vepCondaEnvFromRequest(reqBody)
+  if (condaEnv) {
+    const conda = condaExecutableToken()
+    return `${w(conda)} run -n ${condaEnv} --no-capture-output ${inner}`
+  }
+  return inner
+}
+
 /** Picard launcher token — same rules as a bare command name (like `samtools` in this file). */
 function assertSafePicardCmd(cmd) {
   const v = String(cmd ?? '').trim() || 'picard'
@@ -426,6 +507,28 @@ app.post('/api/variant-calling/haplotype-caller', async (req, res) => {
   }
 })
 
+app.post('/api/variant-annotation/run', async (req, res) => {
+  try {
+    const inputVcf = assertSafePath('inputVcf', req.body?.inputVcf)
+    const outputVcf = assertSafePath('outputVcf', req.body?.outputVcf)
+    const fastaPath = assertSafePath('fastaPath', req.body?.fastaPath)
+
+    const pipeline = vepAnnotationCommand(inputVcf, outputVcf, fastaPath, req.body?.fork, req.body)
+    const script = wrapWithPrologue(pipeline)
+
+    const { stdout, stderr } = await runBashScript(script)
+    res.json({ ok: true, stdout, stderr, exitCode: 0 })
+  } catch (e) {
+    if (e && typeof e.status === 'number') {
+      return res.status(e.status).json({ error: e.message })
+    }
+    return res.status(500).json({
+      error: 'VEP annotation failed',
+      detail: e instanceof Error ? e.message : String(e),
+    })
+  }
+})
+
 app.post('/api/qc/run', async (req, res) => {
   const fastqcDir = process.env.FASTQC_DIR?.trim()
   if (!fastqcDir) {
@@ -507,7 +610,7 @@ app.listen(PORT, () => {
   }
   if (useWslForAlignment()) {
     console.log(
-      'Alignment / post-alignment: WSL uses bash -ilc so ~/.bashrc PATH applies. Set ALIGN_WSL_PROLOGUE in .env if tools are missing.',
+      'WSL shell tools: bash -ilc + optional ALIGN_WSL_PROLOGUE (e.g. conda activate vep_env). Set VEP_CMD if `vep` is not on PATH.',
     )
   }
 })

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlignmentPanel } from './components/AlignmentPanel.jsx'
 import { PostAlignmentPanel } from './components/PostAlignmentPanel.jsx'
 import { QualityControlPanel } from './components/QualityControlPanel.jsx'
+import { VariantAnnotationPanel } from './components/VariantAnnotationPanel.jsx'
 import { VariantCallingPanel } from './components/VariantCallingPanel.jsx'
 import { MENU_SECTIONS } from './menuSections.js'
 import './App.css'
@@ -51,6 +52,8 @@ function App() {
             <PostAlignmentPanel />
           ) : active.id === 'variant-calling' ? (
             <VariantCallingPanel />
+          ) : active.id === 'variant-annotation' ? (
+            <VariantAnnotationPanel />
           ) : (
             <p className="main-placeholder">
               Content and actions for this step will go here. Switch sections using the menu on the
