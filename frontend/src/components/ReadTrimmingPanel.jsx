@@ -4,6 +4,8 @@ export function ReadTrimmingPanel() {
   const [inputPath, setInputPath] = useState('')
   const [outputPath, setOutputPath] = useState('')
   const [ref, setRef] = useState('adapters')
+  const [customCommand, setCustomCommand] = useState('')
+  const [commandEdited, setCommandEdited] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [log, setLog] = useState('')
@@ -38,6 +40,12 @@ export function ReadTrimmingPanel() {
     }
     setLoading(true)
     try {
+      const finalCommand = (commandEdited ? customCommand : previewCmd).trim()
+      if (!finalCommand) {
+        setError('Enter a BBDuk shell command to run.')
+        setLoading(false)
+        return
+      }
       const res = await fetch('/api/trimming/bbduk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -45,6 +53,7 @@ export function ReadTrimmingPanel() {
           inputPath: inn,
           outputPath: out,
           ref: ref.trim() || 'adapters',
+          command: finalCommand,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -60,14 +69,13 @@ export function ReadTrimmingPanel() {
     } finally {
       setLoading(false)
     }
-  }, [inputPath, outputPath, ref])
+  }, [commandEdited, customCommand, inputPath, outputPath, previewCmd, ref])
 
   return (
     <div className="qc-panel">
       <p className="qc-lead">
         Trim adapters and low-quality bases with BBMap <code>bbduk.sh</code>. Paths must point to real
-        files on the machine running the API (same pattern as FastQC). Java for BBTools must be available
-        to Git Bash (typically already true if you can run <code>bbduk.sh</code> in a terminal).
+        files on the machine running the API (same pattern as FastQC). 
       </p>
 
       <div className="qc-field">
@@ -130,12 +138,6 @@ export function ReadTrimmingPanel() {
         </button>
       </div>
 
-      {error ? (
-        <div className="qc-error" role="alert">
-          {error}
-        </div>
-      ) : null}
-
       {log ? (
         <pre className="qc-cmd" style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>
           {log}
@@ -143,12 +145,20 @@ export function ReadTrimmingPanel() {
       ) : null}
 
       <section className="qc-server-help">
-        <h3 className="qc-help-title">Equivalent shell command</h3>
+        <h3 className="qc-help-title">shell command</h3>
         <p className="qc-hint">From your BBMap <code>bbmap</code> directory in Git Bash (parameters match the API):</p>
-        <pre className="qc-cmd" style={{ whiteSpace: 'pre-wrap' }}>
-          {previewCmd}
-        </pre>
-        <h3 className="qc-help-title">Server setup</h3>
+        <textarea
+          className="qc-input align-textarea"
+          value={commandEdited ? customCommand : previewCmd}
+          onChange={(e) => {
+            setCommandEdited(true)
+            setCustomCommand(e.target.value)
+          }}
+          disabled={loading}
+          spellCheck={false}
+          rows={8}
+        />
+        <h3 className="qc-help-title">BBduk setup</h3>
         <ol className="qc-help-list">
           <li>
             Set <code>BBMAP_DIR</code> in <code>backend/.env</code> to the folder that contains{' '}

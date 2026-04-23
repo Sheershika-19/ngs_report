@@ -664,7 +664,12 @@ app.post('/api/trimming/bbduk', async (req, res) => {
     const trimq = parseTrimInt(req.body?.trimq, 20, 'trimq')
     const minlen = parseTrimInt(req.body?.minlen, 30, 'minlen')
 
-    const line = `./bbduk.sh in=${sq(msysIn)} out=${sq(msysOut)} ref=${refTok} ktrim=r k=${k} mink=${mink} hdist=${hdist} qtrim=r trimq=${trimq} minlen=${minlen}`
+    const defaultLine = `./bbduk.sh in=${sq(msysIn)} out=${sq(msysOut)} ref=${refTok} ktrim=r k=${k} mink=${mink} hdist=${hdist} qtrim=r trimq=${trimq} minlen=${minlen}`
+    const commandFromUser = String(req.body?.command ?? '').trim()
+    if (/[\r\n\0]/.test(commandFromUser)) {
+      return res.status(400).json({ error: 'command contains invalid characters' })
+    }
+    const line = commandFromUser || defaultLine
     const script = trimScriptBody(`cd ${sq(toGitBashPath(resolvedBbmap))} && ${line}`)
 
     const { stdout, stderr } = await runGitBashScript(script)

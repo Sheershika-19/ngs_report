@@ -53,7 +53,7 @@ export function QualityControlPanel() {
   return (
     <div className="qc-panel">
       <p className="qc-lead">
-        Run FastQC on a file that already exists on this computer. Large <code>.fastq</code> /{' '}
+        Run FastQC on a file that already exists on this system. Large <code>.fastq</code> /{' '}
         <code>.fq.gz</code> files are not uploaded through the browser; the API runs FastQC locally
         using the path you provide. When the run succeeds, your browser saves{' '}
         <strong>fastqc-results.zip</strong> to your normal download folder (e.g.{' '}
@@ -75,8 +75,7 @@ export function QualityControlPanel() {
         />
         <p className="qc-hint">
           Use the full Windows path to your <code>.fastq</code>, <code>.fq.gz</code>, or other
-          FastQC-supported file (your example used a <code>.zip</code> from the instrument—that works
-          if FastQC accepts it).
+          FastQC-supported file.
         </p>
       </div>
 
@@ -86,26 +85,17 @@ export function QualityControlPanel() {
         </button>
       </div>
 
-      {error ? (
-        <div className="qc-error" role="alert">
-          {error}
-        </div>
-      ) : null}
+
 
       <section className="qc-server-help">
-        <h3 className="qc-help-title">Server setup (one time)</h3>
+        <h3 className="qc-help-title">FastQC setup (one time)</h3>
         <ol className="qc-help-list">
-          <li>
-            Install dependencies: in folder <code>backend</code>, run <code>npm install</code>.
-          </li>
+         
           <li>
             Set <code>FASTQC_DIR</code> to your cloned FastQC project root (the folder that contains{' '}
             <code>bin</code>, <code>sam-1.103.jar</code>, <code>jbzip2-0.9.jar</code>).
           </li>
-          <li>
-            Start the API (port 8787): <code>npm run dev</code> in <code>backend</code>, or use{' '}
-            <code>npm run dev</code> in <code>frontend</code> to run Vite and the API together.
-          </li>
+          
           <li>
             Java must be on <code>PATH</code> (or set <code>JAVA_HOME</code>). The API runs:{' '}
             <code className="qc-cmd">
