@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AlignmentPanel } from './components/AlignmentPanel.jsx'
+import { DownstreamAnalysisPanel } from './components/DownstreamAnalysisPanel.jsx'
 import { OverviewPanel } from './components/OverviewPanel.jsx'
 import { PostAlignmentPanel } from './components/PostAlignmentPanel.jsx'
 import { QualityControlPanel } from './components/QualityControlPanel.jsx'
@@ -60,6 +61,8 @@ function App() {
             <VariantCallingPanel />
           ) : active.id === 'variant-annotation' ? (
             <VariantAnnotationPanel />
+          ) : active.id === 'downstream' ? (
+            <DownstreamAnalysisPanel />
           ) : (
             <p className="main-placeholder">
               Content and actions for this step will go here. Switch sections using the menu on the

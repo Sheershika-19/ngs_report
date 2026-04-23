@@ -7,5 +7,5 @@ export const MENU_SECTIONS = [
   { id: 'post-alignment', label: 'Post-Alignment Processing' },
   { id: 'variant-calling', label: 'Variant Calling' },
   { id: 'variant-annotation', label: 'Variant Annotation' },
-  { id: 'downstream', label: 'Downstream Analysis and Interpretation' },
+  { id: 'downstream', label: 'Downstream Analysis' },
 ]

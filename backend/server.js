@@ -326,6 +326,12 @@ function condaExecutableToken() {
   }
 }
 
+function pythonExecutable() {
+  const fromEnv = process.env.PYTHON_BIN?.trim()
+  if (fromEnv) return fromEnv
+  return process.platform === 'win32' ? 'python' : 'python3'
+}
+
 /**
  * Ensembl VEP: --cache --offline. Optionally wrap with `conda run -n env --no-capture-output` so
  * Perl sees the env’s modules (fixes missing DBI when activation from bash -ilc is incomplete).
@@ -610,6 +616,111 @@ app.post('/api/variant-annotation/run', async (req, res) => {
     }
     return res.status(500).json({
       error: 'VEP annotation failed',
+      detail: e instanceof Error ? e.message : String(e),
+    })
+  }
+})
+
+/**
+ * CIViC downstream clinical report generator:
+ * python vcf_report_generator.py <input.vcf> --output clinical_report.html
+ *
+ * The script and civic_chroma_db are expected inside CIVIC_REPORT_DIR by default.
+ */
+app.post('/api/downstream/civic-report', async (req, res) => {
+  try {
+    const reportDirRaw = process.env.CIVIC_REPORT_DIR?.trim()
+    const scriptRaw = req.body?.scriptPath?.trim() || process.env.CIVIC_REPORT_SCRIPT?.trim()
+    const dbRaw = req.body?.dbDir?.trim() || process.env.CIVIC_CHROMA_DB_DIR?.trim()
+    const inputVcf = assertSafePath('inputVcf', req.body?.inputVcf)
+    const outputHtml = assertSafePath('outputHtml', req.body?.outputHtml)
+
+    const reportDir = reportDirRaw ? path.resolve(reportDirRaw) : null
+    const scriptPath = scriptRaw
+      ? path.resolve(scriptRaw)
+      : reportDir
+        ? path.join(reportDir, 'vcf_report_generator.py')
+        : null
+    const dbDir = dbRaw ? path.resolve(dbRaw) : reportDir ? path.join(reportDir, 'civic_chroma_db') : null
+
+    if (!scriptPath || !dbDir) {
+      return res.status(500).json({
+        error:
+          'Set CIVIC_REPORT_DIR (recommended) or both CIVIC_REPORT_SCRIPT and CIVIC_CHROMA_DB_DIR in backend/.env.',
+      })
+    }
+
+    try {
+      await fsPromises.access(scriptPath, fs.constants.R_OK)
+    } catch {
+      return res.status(400).json({ error: `Python script not found or not readable: ${scriptPath}` })
+    }
+    try {
+      await fsPromises.access(dbDir, fs.constants.R_OK)
+    } catch {
+      return res.status(400).json({ error: `civic_chroma_db folder not found or not readable: ${dbDir}` })
+    }
+
+    const resolvedInput = path.resolve(inputVcf)
+    const resolvedOutput = path.resolve(outputHtml)
+    const outputParent = path.dirname(resolvedOutput)
+
+    try {
+      await fsPromises.access(resolvedInput, fs.constants.R_OK)
+    } catch {
+      return res.status(400).json({ error: `Input VCF not found or not readable: ${resolvedInput}` })
+    }
+    try {
+      await fsPromises.access(outputParent, fs.constants.W_OK)
+    } catch {
+      return res.status(400).json({ error: `Output folder is not writable: ${outputParent}` })
+    }
+
+    const args = [scriptPath, resolvedInput, '--output', resolvedOutput]
+    const env = { ...process.env, CIVIC_CHROMA_DB_DIR: dbDir }
+
+    const result = await new Promise((resolve, reject) => {
+      const proc = spawn(pythonExecutable(), args, {
+        windowsHide: true,
+        cwd: path.dirname(scriptPath),
+        env,
+      })
+      let stdout = ''
+      let stderr = ''
+      proc.stdout?.on('data', (d) => {
+        stdout += d.toString()
+      })
+      proc.stderr?.on('data', (d) => {
+        stderr += d.toString()
+      })
+      proc.on('error', reject)
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve({ stdout, stderr, exitCode: 0 })
+          return
+        }
+        const msg = [stderr, stdout].filter(Boolean).join('\n') || `exit ${code}`
+        const err = new Error(msg)
+        err.exitCode = code
+        reject(err)
+      })
+    })
+
+    return res.json({
+      ok: true,
+      ...result,
+      scriptPath,
+      dbDir,
+      inputVcf: resolvedInput,
+      outputHtml: resolvedOutput,
+      command: `${pythonExecutable()} "${scriptPath}" "${resolvedInput}" --output "${resolvedOutput}"`,
+    })
+  } catch (e) {
+    if (e && typeof e.status === 'number') {
+      return res.status(e.status).json({ error: e.message })
+    }
+    return res.status(500).json({
+      error: 'CIViC report generation failed',
       detail: e instanceof Error ? e.message : String(e),
     })
   }
