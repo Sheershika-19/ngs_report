@@ -14,12 +14,8 @@ export function PostAlignmentPanel() {
   const [indexBamPath, setIndexBamPath] = useState('')
 
   const [mdLoading, setMdLoading] = useState(false)
-  const [mdError, setMdError] = useState(null)
-  const [mdLog, setMdLog] = useState('')
 
   const [indexLoading, setIndexLoading] = useState(false)
-  const [indexError, setIndexError] = useState(null)
-  const [indexLog, setIndexLog] = useState('')
 
   const [copied, setCopied] = useState(false)
 
@@ -40,13 +36,10 @@ export function PostAlignmentPanel() {
   }, [indexBamPath, outputBam])
 
   const runMarkDuplicates = useCallback(async () => {
-    setMdError(null)
-    setMdLog('')
     const i = inputBam.trim()
     const o = outputBam.trim()
     const met = metricsPath.trim()
     if (!i || !o || !met) {
-      setMdError('Fill in input BAM, output BAM, and metrics file path.')
       return
     }
     setMdLoading(true)
@@ -66,22 +59,17 @@ export function PostAlignmentPanel() {
           data.detail ? `${data.error || 'Error'}: ${data.detail}` : data.error || res.statusText,
         )
       }
-      const parts = [data.stdout, data.stderr].filter(Boolean)
-      setMdLog(parts.join('\n') || 'Finished (no output on stdout/stderr).')
       setIndexBamPath((prev) => (prev.trim() ? prev : o))
-    } catch (e) {
-      setMdError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // Suppress UI output/error boxes for this step.
     } finally {
       setMdLoading(false)
     }
   }, [inputBam, outputBam, metricsPath])
 
   const runIndexBam = useCallback(async () => {
-    setIndexError(null)
-    setIndexLog('')
     const bam = indexBamPath.trim() || outputBam.trim()
     if (!bam) {
-      setIndexError('Enter the path to dedup.bam (or fill output BAM above).')
       return
     }
     setIndexLoading(true)
@@ -97,10 +85,8 @@ export function PostAlignmentPanel() {
           data.detail ? `${data.error || 'Error'}: ${data.detail}` : data.error || res.statusText,
         )
       }
-      const parts = [data.stdout, data.stderr].filter(Boolean)
-      setIndexLog(parts.join('\n') || 'Finished (no output on stdout/stderr).')
-    } catch (e) {
-      setIndexError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // Suppress UI output/error boxes for this step.
     } finally {
       setIndexLoading(false)
     }
@@ -120,8 +106,7 @@ export function PostAlignmentPanel() {
       <p className="qc-lead">
         <strong>Step 4 — Post-alignment:</strong> mark duplicate reads with{' '}
         <strong>Picard MarkDuplicates</strong>, then index the deduplicated BAM with{' '}
-        <strong>samtools index</strong>.         The server runs <strong>Broad Picard</strong> (MarkDuplicates),
-        not <strong>MusicBrainz Picard</strong>. Set <code>PICARD_JAVA</code> and{' '}
+        <strong>samtools index</strong>. Set <code>PICARD_JAVA</code> and{' '}
         <code>PICARD_JAR</code> in <code>backend/.env</code> (e.g.{' '}
         <code>java -jar ~/picard.jar</code> like your WSL terminal). Use WSL paths for files (
         <code>~/…</code>). Outputs:{' '}
@@ -140,10 +125,7 @@ export function PostAlignmentPanel() {
 PICARD_JAVA=/usr/lib/jvm/java-17-openjdk-amd64/bin/java
 PICARD_JAR=~/picard.jar`}
         </pre>
-        <p className="qc-hint">
-          Optional: <code>PICARD_JAVA_OPTS=-Xmx4g</code> if you need more heap. Without{' '}
-          <code>PICARD_JAR</code>, the API uses the Linux <code>/usr/bin/picard</code> binary instead.
-        </p>
+       
       </section>
 
       <section className="align-section">
@@ -215,18 +197,6 @@ PICARD_JAR=~/picard.jar`}
           </button>
         </div>
 
-        {mdError ? (
-          <div className="qc-error" role="alert">
-            {mdError}
-          </div>
-        ) : null}
-
-        {mdLog ? (
-          <div className="align-log-wrap">
-            <h4 className="align-log-title">Picard output</h4>
-            <pre className="qc-cmd align-log">{mdLog}</pre>
-          </div>
-        ) : null}
       </section>
 
       <section className="align-section">
@@ -273,19 +243,6 @@ PICARD_JAR=~/picard.jar`}
             Copy command
           </button>
         </div>
-
-        {indexError ? (
-          <div className="qc-error" role="alert">
-            {indexError}
-          </div>
-        ) : null}
-
-        {indexLog ? (
-          <div className="align-log-wrap">
-            <h4 className="align-log-title">Index output</h4>
-            <pre className="qc-cmd align-log">{indexLog}</pre>
-          </div>
-        ) : null}
 
         {copied ? (
           <p className="qc-hint align-copied" role="status">

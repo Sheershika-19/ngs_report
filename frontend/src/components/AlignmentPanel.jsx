@@ -18,12 +18,8 @@ export function AlignmentPanel() {
   const [indexBamPath, setIndexBamPath] = useState('')
 
   const [alignLoading, setAlignLoading] = useState(false)
-  const [alignError, setAlignError] = useState(null)
-  const [alignLog, setAlignLog] = useState('')
 
   const [indexLoading, setIndexLoading] = useState(false)
-  const [indexError, setIndexError] = useState(null)
-  const [indexLog, setIndexLog] = useState('')
 
   const [copied, setCopied] = useState(false)
 
@@ -57,14 +53,11 @@ export function AlignmentPanel() {
   }, [indexBamPath, outBam])
 
   const runAlignment = useCallback(async () => {
-    setAlignError(null)
-    setAlignLog('')
     const ref = refPath.trim()
     const fq = fastqPath.trim()
     const out = outBam.trim()
     const bwa = bwaCmd.trim() || 'bwa'
     if (!ref || !fq || !out) {
-      setAlignError('Fill in reference genome path, cleaned FASTQ path, and output BAM path.')
       return
     }
     setAlignLoading(true)
@@ -85,22 +78,17 @@ export function AlignmentPanel() {
           data.detail ? `${data.error || 'Error'}: ${data.detail}` : data.error || res.statusText,
         )
       }
-      const parts = [data.stdout, data.stderr].filter(Boolean)
-      setAlignLog(parts.join('\n') || 'Finished (no output on stdout/stderr).')
       setIndexBamPath((prev) => (prev.trim() ? prev : out))
-    } catch (e) {
-      setAlignError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // Suppress UI output/error boxes for this step.
     } finally {
       setAlignLoading(false)
     }
   }, [bwaCmd, refPath, fastqPath, outBam])
 
   const runIndexBam = useCallback(async () => {
-    setIndexError(null)
-    setIndexLog('')
     const bam = indexBamPath.trim() || outBam.trim()
     if (!bam) {
-      setIndexError('Enter the path to the sorted BAM file (or fill output BAM above).')
       return
     }
     setIndexLoading(true)
@@ -116,10 +104,8 @@ export function AlignmentPanel() {
           data.detail ? `${data.error || 'Error'}: ${data.detail}` : data.error || res.statusText,
         )
       }
-      const parts = [data.stdout, data.stderr].filter(Boolean)
-      setIndexLog(parts.join('\n') || 'Finished (no output on stdout/stderr).')
-    } catch (e) {
-      setIndexError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // Suppress UI output/error boxes for this step.
     } finally {
       setIndexLoading(false)
     }
@@ -139,12 +125,9 @@ export function AlignmentPanel() {
       <p className="qc-lead">
         <strong>Objective:</strong> Align cleaned reads to hg38 with <strong>BWA-MEM</strong> and{' '}
         <strong>Samtools</strong>. On Windows, the API runs commands in <strong>WSL</strong> (
-        <code>wsl.exe</code>) with an <strong>interactive login</strong> shell so{' '}
-        <strong>Conda</strong> (and the rest of your <code>~/.bashrc</code>) loads—otherwise{' '}
-        <code>bwa</code> is missing from <code>PATH</code> and the pipeline fails. You can use{' '}
+        <code>wsl.exe</code>). You can use{' '}
         <code>~/…</code> paths (e.g. <code>~/bwa/bwa</code>, <code>~/hg38.fa</code>)—they expand to
-        your WSL home. Use <code>bwa</code> if <code>which bwa</code> works, or{' '}
-        <code>~/bwa/bwa</code> when the binary lives under <code>~/bwa/</code>.
+        your WSL home.
       </p>
 
       <section className="align-section">
@@ -168,9 +151,11 @@ export function AlignmentPanel() {
           <strong>Paths:</strong> Use the same paths WSL Linux would use—<code>~/…</code> or{' '}
           <code>/home/yourname/…</code>—not Windows paths like <code>C:\…</code>. The pipeline runs
           inside WSL, so inputs must be where Linux can read them (your WSL home is fine).{' '}
+          </p>
+          <p className="qc-hint">
           <strong>Output:</strong> The sorted BAM is written to the path you type for the output
           field. <code>~/aligned_sorted.bam</code> means the file is created in your{' '}
-          <strong>WSL home</strong> (e.g. <code>\\wsl$\Ubuntu\home\you\</code> in File Explorer). To
+          <strong>WSL home</strong>. To
           save directly under a Windows folder instead, use a path like{' '}
           <code>/mnt/c/Users/you/Downloads/aligned_sorted.bam</code> (possible but often slower I/O).
         </p>
@@ -195,8 +180,7 @@ export function AlignmentPanel() {
             disabled={alignLoading}
           />
           <p className="qc-hint">
-            Use <code>~/bwa/bwa</code> if you copied the BWA folder to your home (as in{' '}
-            <code>cp -r …/bwa ~/</code>). Otherwise <code>bwa</code> or the full path from{' '}
+            Use <code>~/bwa/bwa</code> if you have BWA downloaded on your home. Otherwise the full path from{' '}
             <code>which bwa</code>.
           </p>
         </div>
@@ -267,19 +251,6 @@ export function AlignmentPanel() {
           </button>
         </div>
 
-        {alignError ? (
-          <div className="qc-error" role="alert">
-            {alignError}
-          </div>
-        ) : null}
-
-        {alignLog ? (
-          <div className="align-log-wrap">
-            <h4 className="align-log-title">Alignment output</h4>
-            <pre className="qc-cmd align-log">{alignLog}</pre>
-          </div>
-        ) : null}
-
         {copied ? (
           <p className="qc-hint align-copied" role="status">
             Copied to clipboard.
@@ -333,18 +304,6 @@ export function AlignmentPanel() {
           </button>
         </div>
 
-        {indexError ? (
-          <div className="qc-error" role="alert">
-            {indexError}
-          </div>
-        ) : null}
-
-        {indexLog ? (
-          <div className="align-log-wrap">
-            <h4 className="align-log-title">Index output</h4>
-            <pre className="qc-cmd align-log">{indexLog}</pre>
-          </div>
-        ) : null}
       </section>
     </div>
   )

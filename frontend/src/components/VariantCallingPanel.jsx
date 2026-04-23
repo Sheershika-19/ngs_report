@@ -31,8 +31,6 @@ export function VariantCallingPanel() {
   const [outputVcf, setOutputVcf] = useState('')
 
   const [runLoading, setRunLoading] = useState(false)
-  const [runError, setRunError] = useState(null)
-  const [runLog, setRunLog] = useState('')
   const [copied, setCopied] = useState(false)
 
   const hcPreview = useMemo(() => {
@@ -57,14 +55,11 @@ export function VariantCallingPanel() {
   }, [gatkJar, refPath, inputBam, outputVcf])
 
   const runHaplotypeCaller = useCallback(async () => {
-    setRunError(null)
-    setRunLog('')
     const r = refPath.trim()
     const i = inputBam.trim()
     const o = outputVcf.trim()
     const jar = gatkJar.trim() || defaultGatkJar
     if (!r || !i || !o) {
-      setRunError('Fill in reference FASTA, input BAM, and output VCF paths.')
       return
     }
     setRunLoading(true)
@@ -85,10 +80,8 @@ export function VariantCallingPanel() {
           data.detail ? `${data.error || 'Error'}: ${data.detail}` : data.error || res.statusText,
         )
       }
-      const parts = [data.stdout, data.stderr].filter(Boolean)
-      setRunLog(parts.join('\n') || 'Finished (no output on stdout/stderr).')
-    } catch (e) {
-      setRunError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // Suppress UI output/error boxes for this step.
     } finally {
       setRunLoading(false)
     }
@@ -166,9 +159,8 @@ export function VariantCallingPanel() {
       <section className="align-section">
         <h3 className="qc-help-title">C. Run HaplotypeCaller</h3>
         <p className="qc-hint">
-          Uses <code>java -jar …/gatk-package-*-local.jar HaplotypeCaller</code> (same pattern as your
-          working WSL command). Java comes from <code>PICARD_JAVA</code> in <code>backend/.env</code>;
-          default jar from <code>GATK_JAR</code> or the field below. Long run—keep this tab open.
+           Java comes from <code>PICARD_JAVA</code> in <code>backend/.env</code>;
+          default jar from <code>GATK_JAR</code>
         </p>
 
         <div className="qc-field">
@@ -250,19 +242,6 @@ export function VariantCallingPanel() {
             Copy command
           </button>
         </div>
-
-        {runError ? (
-          <div className="qc-error" role="alert">
-            {runError}
-          </div>
-        ) : null}
-
-        {runLog ? (
-          <div className="align-log-wrap">
-            <h4 className="align-log-title">HaplotypeCaller output</h4>
-            <pre className="qc-cmd align-log">{runLog}</pre>
-          </div>
-        ) : null}
 
         {copied ? (
           <p className="qc-hint align-copied" role="status">

@@ -109,14 +109,15 @@
 
 .main-placeholder {
   margin: 0;
-  max-width: 42rem;
+  max-width: none;
   color: var(--text);
   line-height: 1.55;
 }
 
 /* Quality control */
 .qc-panel {
-  max-width: 40rem;
+  max-width: none;
+  width: 100%;
 }
 
 .qc-lead {
@@ -250,7 +251,22 @@
 
 /* Alignment (Step 3) */
 .align-panel {
-  max-width: 44rem;
+  max-width: none;
+}
+
+.overview-panel {
+  max-width: none;
+}
+
+.qc-success {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--social-bg);
+  color: var(--text-h);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  margin-bottom: 1.25rem;
 }
 
 .align-section {

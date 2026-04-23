@@ -27,8 +27,6 @@ export function VariantAnnotationPanel() {
   const [fork, setFork] = useState('4')
 
   const [runLoading, setRunLoading] = useState(false)
-  const [runError, setRunError] = useState(null)
-  const [runLog, setRunLog] = useState('')
   const [copied, setCopied] = useState(false)
 
   const vepPreview = useMemo(() => {
@@ -65,19 +63,15 @@ export function VariantAnnotationPanel() {
   }, [vepCmd, vepCondaEnv, inputVcf, outputVcf, fastaPath, fork])
 
   const runVep = useCallback(async () => {
-    setRunError(null)
-    setRunLog('')
     const i = inputVcf.trim()
     const o = outputVcf.trim()
     const f = fastaPath.trim()
     const v = vepCmd.trim() || defaultVepCmd
     const fk = fork.trim() ? Number.parseInt(fork.trim(), 10) : 4
     if (!i || !o || !f) {
-      setRunError('Fill in input VCF, output VCF, and reference FASTA paths.')
       return
     }
     if (!Number.isInteger(fk) || fk < 1 || fk > 16) {
-      setRunError('Fork must be an integer from 1 to 16.')
       return
     }
     setRunLoading(true)
@@ -100,10 +94,8 @@ export function VariantAnnotationPanel() {
           data.detail ? `${data.error || 'Error'}: ${data.detail}` : data.error || res.statusText,
         )
       }
-      const parts = [data.stdout, data.stderr].filter(Boolean)
-      setRunLog(parts.join('\n') || 'Finished (no output on stdout/stderr).')
-    } catch (e) {
-      setRunError(e instanceof Error ? e.message : String(e))
+    } catch {
+      // Suppress UI output/error boxes for this step.
     } finally {
       setRunLoading(false)
     }
@@ -123,11 +115,6 @@ export function VariantAnnotationPanel() {
 
       <section className="align-section">
         <h3 className="qc-help-title">1. Download and install the VEP cache (manual, one time)</h3>
-        <p className="qc-hint">
-          The indexed cache is large; use <code>wget -c</code> so you can resume if the download
-          stops. After extraction you should see e.g. <code>~/.vep/homo_sapiens</code> alongside the
-          <code>.tar.gz</code>.
-        </p>
         <p className="qc-hint">
           <strong>Go to the VEP cache folder</strong>
         </p>
@@ -166,12 +153,6 @@ export function VariantAnnotationPanel() {
       <section className="align-section">
         <h3 className="qc-help-title">2. Conda env (recommended for API runs)</h3>
         <p className="qc-hint">
-          The app can run <code>conda run -n vep_env --no-capture-output vep …</code> so VEP uses the
-          same Perl and modules as your terminal (avoids missing <code>DBI.pm</code> when only{' '}
-          <code>activate</code> is flaky under <code>bash -ilc</code>).
-        </p>
-        <p className="qc-hint">
-          If you still see <code>Can&apos;t locate DBI.pm</code>, install it in the env (WSL):{' '}
           <code>conda activate vep_env</code> then{' '}
           <code className="qc-cmd align-cmd-inline">conda install -y -c bioconda perl-dbi</code>
         </p>
@@ -186,7 +167,7 @@ export function VariantAnnotationPanel() {
         <h3 className="qc-help-title">3. Run VEP</h3>
         <p className="qc-hint">
           Same flags as a typical offline run: <code>--vcf --symbol --terms SO --hgvs --protein --canonical</code>,{' '}
-          <code>--fasta</code>, <code>--force_overwrite</code>. Long run—keep the tab open.
+          <code>--fasta</code>, <code>--force_overwrite</code>.
         </p>
 
         <div className="qc-field">
@@ -298,19 +279,6 @@ export function VariantAnnotationPanel() {
             Copy command
           </button>
         </div>
-
-        {runError ? (
-          <div className="qc-error" role="alert">
-            {runError}
-          </div>
-        ) : null}
-
-        {runLog ? (
-          <div className="align-log-wrap">
-            <h4 className="align-log-title">VEP output</h4>
-            <pre className="qc-cmd align-log">{runLog}</pre>
-          </div>
-        ) : null}
 
         {copied ? (
           <p className="qc-hint align-copied" role="status">

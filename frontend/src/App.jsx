@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AlignmentPanel } from './components/AlignmentPanel.jsx'
+import { OverviewPanel } from './components/OverviewPanel.jsx'
 import { PostAlignmentPanel } from './components/PostAlignmentPanel.jsx'
 import { QualityControlPanel } from './components/QualityControlPanel.jsx'
 import { ReadTrimmingPanel } from './components/ReadTrimmingPanel.jsx'
@@ -45,7 +46,9 @@ function App() {
           <h2 className="main-title">{active.label}</h2>
         </header>
         <div className="main-body">
-          {active.id === 'quality-control' ? (
+          {active.id === 'overview' ? (
+            <OverviewPanel />
+          ) : active.id === 'quality-control' ? (
             <QualityControlPanel />
           ) : active.id === 'read-trimming' ? (
             <ReadTrimmingPanel />
